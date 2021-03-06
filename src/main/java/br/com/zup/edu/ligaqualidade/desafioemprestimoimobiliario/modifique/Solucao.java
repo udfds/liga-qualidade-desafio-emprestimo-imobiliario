@@ -1,72 +1,143 @@
 package br.com.zup.edu.ligaqualidade.desafioemprestimoimobiliario.modifique;
 
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 public class Solucao {
 
-    private static String CREATED = "created";
+    private static final int event_id = 0;
+    private static final int event_schema = 1;
+    private static final int event_action = 2;
+    private static final int event_timestamp = 3;
+    private static final int proposal_id = 4;
 
-    private static double VALOR_MAXIMO_EMPRESTIMO = 3000000;
+    private static final int proposal_loan_value = 5;
+    private static final int proposal_number_of_monthly_installments = 6;
 
-    private static double VALOR_MINIMO_EMPRESTIMO = 30000;
+    private static final int warranty_id = 5;
+    private static final int warranty_value = 6;
+    private static final int warranty_province = 7;
 
-    private static int IDADE_MINIMA = 18;
+    private static final int proponent_id = 5;
+    private static final int proponent_name = 6;
+    private static final int proponent_age = 7;
+    private static final int proponent_monthly_income = 8;
+    private static final int proponent_is_main = 9;
 
-    private static int MAXIMO_MES = 180;
-
-    private static int MINIMO_MES = 24;
+    private static final HashMap<String, Emprestimo> map = new HashMap<>();
 
     public static String processMessages(List<String> messages) {
+        map.clear();
 
-      List<String> resposta = messages.stream().map(event -> {
-        String[] proposta = event.split(",");
+        messages.forEach(event -> {
+            String[] proposta = event.split(",");
 
-        switch (proposta[1]) {
-            case "proposal" :
-                return proposal(proposta);
+            String proposalId = proposta[proposal_id];
+            if (!map.containsKey(proposalId)) {
+                map.put(proposalId, new Emprestimo());
+            }
 
-            case "warranty" :
-               return warranty(proposta);
+            switch (proposta[event_schema]) {
+                case "proposal":
+                    proposal(proposta);
+                    break;
 
-            case "proponent" :
-                return proponent(proposta);
-        }
-          return null;
-      }).collect(Collectors.toList());
-        resposta.removeIf(Objects::isNull);
-        return String.join(",", resposta);
-  }
+                case "warranty":
+                    warranty(proposta);
+                    break;
 
+                case "proponent":
+                    proponent(proposta);
+                    break;
+            }
 
-    static String proposal(String[] proposta) {
-        double valorEmprestimo =  Double.parseDouble(proposta[5]);
+        });
 
-        //regra:  O valor do empréstimo deve estar entre R$ 30.000,00 e R$ 3.000.000,00
-        if (valorEmprestimo < VALOR_MINIMO_EMPRESTIMO || valorEmprestimo > VALOR_MAXIMO_EMPRESTIMO){
-            return null;
-        }
-        //regra: O empréstimo deve ser pago em no mínimo 2 anos e no máximo 15 anos
-        if (Integer.parseInt(proposta[6]) < MINIMO_MES || Integer.parseInt(proposta[6]) > MAXIMO_MES) {
-            return null;
-        }
+        StringBuilder result = new StringBuilder();
 
-        return proposta[4];
+        map.forEach((key, value) -> {
+            if (value.avaliar()) {
+                result.append(key).append(",");
+            }
+        });
+
+        result.setLength(result.length() - 1);
+
+        return result.toString();
     }
 
-    static String warranty(String[] proposta) {
-        // if (proposta[])
-        return null;
+
+    public static void proposal(String[] proposta) {
+        String proposalId = proposta[proposal_id];
+        String eventAction = proposta[event_action];
+        String proposalLoanValue = proposta[proposal_loan_value];
+        String proposalNumberOfMonthly = proposta[proposal_number_of_monthly_installments];
+
+        Emprestimo emprestimo = map.get(proposalId);
+
+        switch (eventAction) {
+            case "created":
+            case "updated":
+                emprestimo.setProposal(Double.parseDouble(proposalLoanValue));
+                emprestimo.setPrazo(Integer.parseInt(proposalNumberOfMonthly));
+                break;
+
+            case "deleted":
+                map.remove(proposalId);
+                break;
+        }
     }
 
-    static String proponent(String[] proposta) {
-        //regra: Todos os proponentes devem ser maiores de 18 anos
-        if (Integer.parseInt(proposta[7]) < IDADE_MINIMA){
-            return null;
+    public static void warranty(String[] proposta) {
+        String proposalId = proposta[proposal_id];
+        String eventAction = proposta[event_action];
+        String warrantyId = proposta[warranty_id];
+        String warrantyValue = proposta[warranty_value];
+        String warrantyProvince = proposta[warranty_province];
+
+        Emprestimo emprestimo = map.get(proposalId);
+
+        switch (eventAction) {
+            case "added":
+                Warranty warranty = new Warranty();
+                warranty.setValor(Double.parseDouble(warrantyValue));
+                warranty.setEstado(warrantyProvince);
+                warranty.setId(warrantyId);
+                emprestimo.getWarranties().add(warranty);
+                break;
+
+            case "updated":
+                emprestimo.getWarranties().stream()
+                        .filter(it -> it.getId().equalsIgnoreCase(warrantyId))
+                        .findFirst().ifPresent(it -> {
+                    it.setEstado(warrantyProvince);
+                    it.setValor(Double.parseDouble(warrantyValue));
+                });
+                break;
+
+            case "removed":
+                emprestimo.getWarranties().removeIf(it -> it.getId().equalsIgnoreCase(warrantyId));
+                break;
         }
-        return null;
+    }
+
+    public static void proponent(String[] proposta) {
+        String proposalId = proposta[proposal_id];
+        String proponentId = proposta[proponent_id];
+        String proponentName = proposta[proponent_name];
+        String proponentAge = proposta[proponent_age];
+        String proponentMonthlyIncome = proposta[proponent_monthly_income];
+        String proponentIsMain = proposta[proponent_is_main];
+
+        Proponent proponent = new Proponent();
+        proponent.setIdade(Integer.parseInt(proponentAge));
+        proponent.setPrincipal(Boolean.parseBoolean(proponentIsMain));
+        proponent.setMonthlyIncome(Double.parseDouble(proponentMonthlyIncome));
+        proponent.setName(proponentName);
+        proponent.setId(proponentId);
+
+        Emprestimo emprestimo = map.get(proposalId);
+        emprestimo.getProponents().add(proponent);
     }
 
 }
